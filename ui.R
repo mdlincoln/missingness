@@ -44,7 +44,13 @@ shinyUI(fluidPage(
                   "Still Life",
                   min = 0,
                   max = 1,
-                  value = 0.5)
+                  value = 0.5),
+      p("Finally, to calculate the new diversity values, we must specify how many simulation runs to perform"),
+      sliderInput("n_sims",
+                  "Iterations",
+                  min = 10,
+                  max = 500,
+                  value = 100)
     ),
 
     # Show a plot of the generated distribution
@@ -52,7 +58,9 @@ shinyUI(fluidPage(
       p("The original distribution of genres over time, including missing values."),
       plotOutput("static_plot"),
       p("The simulated distribution of genres over time, using new probabilities."),
-      plotOutput("sim_plot")
+      plotOutput("sim_plot"),
+      p("A bootstrapped estimation of genre diversity over time"),
+      plotOutput("div_plot")
     )
   )
 ))

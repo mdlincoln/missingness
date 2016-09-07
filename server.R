@@ -4,6 +4,7 @@ library(dplyr)
 library(vegan)
 library(bootr)
 library(GPIdata)
+library(purrr)
 
 shinyServer(function(input, output) {
 
@@ -28,15 +29,34 @@ shinyServer(function(input, output) {
 
   # Simulation ----
 
-  # Generate a sample of all new genres based on the given probabilities
-  sim_genres <- reactive({
-    sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
+  sim_df <- reactive({
+    # Generate a sample of all new genres based on the given probabilities
+    sim_genres <- sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
+    # Produce a version of kna() with all NA genres filled in. Works with an
+    # assigned genre value will keep that value.
+    kna() %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
   })
 
-  # Produce a version of kna() with all NA genres filled in. Works with an
-  # assigned genre value will keep that value.
-  sim_df <- reactive({
-    kna() %>% mutate(genre = if_else(is.na(genre), sim_genres(), genre))
+  boot_df <- reactive({
+
+    boot_list <- map_df(seq_len(input$n_sims), function(x) {
+      # Generate a sample of all new genres based on the given probabilities
+      sim_genres <- sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
+      # Produce a version of kna() with all NA genres filled in. Works with an
+      # assigned genre value will keep that value.
+      kna() %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
+    }, .id = "iteration")
+
+    # Reduce the boot_list in order to calculate variables
+    boot_list %>%
+      count(iteration, sale_date_year, genre) %>%
+      group_by(iteration, sale_date_year) %>%
+      summarize(div = diversity(n, index = "shannon")) %>%
+      group_by(sale_date_year) %>%
+      summarize(
+        dl = quantile(div, probs = 0.025),
+        dm = quantile(div, probs = 0.5),
+        dh = quantile(div, probs = 0.975))
   })
 
   # Plots ----
@@ -51,6 +71,12 @@ shinyServer(function(input, output) {
     ggplot(sim_df(), aes(x = sale_date_year, fill = genre)) +
       geom_histogram(binwidth = 3) +
       scale_fill_brewer(type = "qual", na.value = "gray50")
+  })
+
+  output$div_plot <- renderPlot({
+    ggplot(boot_df(), aes(x = sale_date_year)) +
+      geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
+      geom_line(aes(y = dm))
   })
 
 })
