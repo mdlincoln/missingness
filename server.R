@@ -3,6 +3,7 @@ library(ggplot2)
 library(dplyr)
 library(vegan)
 library(bootr)
+library(broom)
 library(GPIdata)
 library(purrr)
 
@@ -48,17 +49,25 @@ shinyServer(function(input, output) {
         kna() %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
       }, .id = "iteration")
 
+      boot_div <- function(df) {
+        df %>%
+          group_by(iteration, sale_date_year) %>%
+          summarize(div = diversity(n, index = "shannon"))
+      }
+
     setProgress(value = input$n_sims, message = "Summarizing diversity boundaries...", detail = NULL)
     # Reduce the boot_list in order to calculate variables
     boot_list %>%
       count(iteration, sale_date_year, genre) %>%
       group_by(iteration, sale_date_year) %>%
-      summarize(div = diversity(n, index = "shannon")) %>%
+      bootstrap(m = input$n_boot) %>%
+      do(boot_div(.)) %>%
       group_by(sale_date_year) %>%
       summarize(
-        dl = quantile(div, probs = 0.025),
-        dm = quantile(div, probs = 0.5),
-        dh = quantile(div, probs = 0.975))
+        boot_low = quantile(div, 0.025),
+        boot_med = quantile(div, 0.5),
+        boot_high = quantile(div, 0.975)
+      )
     })
   })
 
@@ -85,8 +94,8 @@ shinyServer(function(input, output) {
 
     isolate({
       ggplot(boot_df(), aes(x = sale_date_year)) +
-        geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
-        geom_line(aes(y = dm))
+        geom_ribbon(aes(ymin = boot_low, ymax = boot_high), alpha = 0.5) +
+        geom_line(aes(y = boot_med))
     })
   })
 
