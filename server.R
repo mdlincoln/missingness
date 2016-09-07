@@ -7,6 +7,8 @@ library(GPIdata)
 
 shinyServer(function(input, output) {
 
+  # Prerequisites ----
+
   na_indices <- reactive({
     sample(x = c(TRUE, FALSE), size = nrow(kg), replace = TRUE,
            prob = c(input$percent_missing, 1 - input$percent_missing))
@@ -24,6 +26,8 @@ shinyServer(function(input, output) {
       input$portrait, input$still_life)
   })
 
+  # Simulation ----
+
   # Generate a sample of all new genres based on the given probabilities
   sim_genres <- reactive({
     sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
@@ -34,6 +38,8 @@ shinyServer(function(input, output) {
   sim_df <- reactive({
     kna() %>% mutate(genre = if_else(is.na(genre), sim_genres(), genre))
   })
+
+  # Plots ----
 
   output$static_plot <- renderPlot({
     ggplot(kna(), aes(x = sale_date_year, fill = genre)) +
