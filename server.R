@@ -38,15 +38,17 @@ shinyServer(function(input, output) {
   })
 
   boot_df <- reactive({
+    withProgress(message = "Simulating missing values...", value = 0, {
+      boot_list <- map_df(seq_len(input$n_sims), function(x) {
+        incProgress(1/input$n_sims, detail = paste0(x, " of ", input$n_sims, " iterations..."))
+        # Generate a sample of all new genres based on the given probabilities
+        sim_genres <- sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
+        # Produce a version of kna() with all NA genres filled in. Works with an
+        # assigned genre value will keep that value.
+        kna() %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
+      }, .id = "iteration")
 
-    boot_list <- map_df(seq_len(input$n_sims), function(x) {
-      # Generate a sample of all new genres based on the given probabilities
-      sim_genres <- sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
-      # Produce a version of kna() with all NA genres filled in. Works with an
-      # assigned genre value will keep that value.
-      kna() %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
-    }, .id = "iteration")
-
+    setProgress(value = input$n_sims, message = "Summarizing diversity boundaries...", detail = NULL)
     # Reduce the boot_list in order to calculate variables
     boot_list %>%
       count(iteration, sale_date_year, genre) %>%
@@ -57,6 +59,7 @@ shinyServer(function(input, output) {
         dl = quantile(div, probs = 0.025),
         dm = quantile(div, probs = 0.5),
         dh = quantile(div, probs = 0.975))
+    })
   })
 
   # Plots ----
