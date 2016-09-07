@@ -50,7 +50,8 @@ shinyUI(fluidPage(
                   "Iterations",
                   min = 10,
                   max = 500,
-                  value = 100)
+                  value = 100),
+      actionButton("calc", "Simulate!")
     ),
 
     # Show a plot of the generated distribution

@@ -77,9 +77,17 @@ shinyServer(function(input, output) {
   })
 
   output$div_plot <- renderPlot({
-    ggplot(boot_df(), aes(x = sale_date_year)) +
-      geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
-      geom_line(aes(y = dm))
+
+    # Isolate this calculation and plot behind an actionButton
+    if (input$calc == 0) {
+      stop("Check your inputs, then click \"Calculate!\" to run the simulation and plot the results")
+    }
+
+    isolate({
+      ggplot(boot_df(), aes(x = sale_date_year)) +
+        geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
+        geom_line(aes(y = dm))
+    })
   })
 
 })
