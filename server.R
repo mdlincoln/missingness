@@ -39,6 +39,10 @@ shinyServer(function(input, output) {
 
   boot_df <- reactive({
     withProgress(message = "Simulating missing values...", value = 0, {
+
+      # For each simulation iteration, produce a version of the source data with
+      # genres filled in using the sim_df function. Returns a combined dataframe
+      # that can be grouped by "iteration"
       na_simmed_df <- map_df(seq_len(input$n_sims), function(x) {
         incProgress(1/input$n_sims, detail = paste0(x, " of ", input$n_sims, " iterations..."))
         sim_df(kna())
@@ -47,6 +51,8 @@ shinyServer(function(input, output) {
       message("Rows of simulated data: ", nrow(na_simmed_df))
 
       setProgress(message = "Bootstrapping replicates...", value = 0)
+      # For each of the simulation iterations, bootstrap n_boot samples from
+      # each year (sampling 80% of records from each year)
       booted_list <- map_df(seq_len(input$n_boot), function(x) {
         incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
         na_simmed_df %>%
