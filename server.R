@@ -30,23 +30,19 @@ shinyServer(function(input, output) {
 
   # Simulation ----
 
-  sim_df <- reactive({
-    # Generate a sample of all new genres based on the given probabilities
-    sim_genres <- sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
+  sim_df <- function(df) {
+    # Generate a sample of all new genres based on the given weights
+    sim_genres <- sample(gnames, prob = gprobs(), size = nrow(df), replace = TRUE)
     # Produce a version of kna() with all NA genres filled in. Works with an
     # assigned genre value will keep that value.
-    kna() %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
-  })
+    df %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
+  }
 
   boot_df <- reactive({
     withProgress(message = "Simulating missing values...", value = 0, {
       boot_list <- map_df(seq_len(input$n_sims), function(x) {
         incProgress(1/input$n_sims, detail = paste0(x, " of ", input$n_sims, " iterations..."))
-        # Generate a sample of all new genres based on the given probabilities
-        sim_genres <- sample(gnames, prob = gprobs(), size = nrow(kna()), replace = TRUE)
-        # Produce a version of kna() with all NA genres filled in. Works with an
-        # assigned genre value will keep that value.
-        kna() %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
+        sim_df(kna())
       }, .id = "iteration")
 
       boot_div <- function(df) {
@@ -80,7 +76,7 @@ shinyServer(function(input, output) {
   })
 
   output$sim_plot <- renderPlot({
-    ggplot(sim_df(), aes(x = sale_date_year, fill = genre)) +
+    ggplot(sim_df(kna()), aes(x = sale_date_year, fill = genre)) +
       geom_histogram(binwidth = 3) +
       scale_fill_brewer(type = "qual", na.value = "gray50")
   })
