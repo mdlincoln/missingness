@@ -22,8 +22,8 @@ section_example <- div(
 section_simulated <- div(
   p("Finally, to calculate the new diversity values, we must specify how many simulation runs to perform"),
   inputPanel(
-    sliderInput("n_sims", "Missing data simulations", min = 10, max = 500, value = 100),
-    sliderInput("n_boot", "Bootstrap iterations", min = 10, max = 500, value = 100),
+    sliderInput("n_sims", "Missing data simulations", min = 10, max = 100, value = 50),
+    sliderInput("n_boot", "Bootstrap iterations", min = 10, max = 100, value = 10),
     actionButton("calc", "Simulate!")),
   p("A bootstrapped estimation of genre diversity over time"),
   plotOutput("div_plot"))

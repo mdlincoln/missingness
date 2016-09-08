@@ -19,7 +19,8 @@ shinyServer(function(input, output) {
   # Generate a dataset with artificially missing data
   kna <- reactive({
     kg %>%
-      mutate(genre = if_else(na_indices(), true = NA_character_, false = genre))
+      mutate(genre = if_else(na_indices(), true = NA_character_, false = genre)) %>%
+      select(sale_date_year, genre)
   })
 
   # Create a vector of probabilities for the newly assigned genre values
@@ -40,30 +41,36 @@ shinyServer(function(input, output) {
 
   boot_df <- reactive({
     withProgress(message = "Simulating missing values...", value = 0, {
-      boot_list <- map_df(seq_len(input$n_sims), function(x) {
+      na_simmed_df <- map_df(seq_len(input$n_sims), function(x) {
         incProgress(1/input$n_sims, detail = paste0(x, " of ", input$n_sims, " iterations..."))
         sim_df(kna())
       }, .id = "iteration")
 
-      boot_div <- function(df) {
-        df %>%
-          group_by(iteration, sale_date_year) %>%
-          summarize(div = diversity(n, index = "shannon"))
-      }
+      message("Rows of simulated data: ", nrow(na_simmed_df))
 
-    setProgress(value = input$n_sims, message = "Summarizing diversity boundaries...", detail = NULL)
-    # Reduce the boot_list in order to calculate variables
-    boot_list %>%
-      count(iteration, sale_date_year, genre) %>%
-      group_by(iteration, sale_date_year) %>%
-      bootstrap(m = input$n_boot) %>%
-      do(boot_div(.)) %>%
-      group_by(sale_date_year) %>%
-      summarize(
-        boot_low = quantile(div, 0.025),
-        boot_med = quantile(div, 0.5),
-        boot_high = quantile(div, 0.975)
-      )
+      setProgress(message = "Bootstrapping replicates...", value = 0)
+      booted_list <- map_df(seq_len(input$n_boot), function(x) {
+        incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
+        na_simmed_df %>%
+          group_by(iteration, sale_date_year) %>%
+          sample_frac(size = 0.8, replace = FALSE)
+      }, .id = "boot")
+
+      message("Rows of bootstrapped replicates: ", nrow(booted_list))
+
+      setProgress(message = "Calculating diversity of all replicates...", detail = "")
+      diversities <- booted_list %>%
+        count(iteration, boot, sale_date_year, genre) %>%
+        group_by(iteration, boot, sale_date_year) %>%
+        summarize(div = diversity(n, index = "shannon"))
+
+      setProgress(message = "Calculating diversity ranges...")
+      diversities %>%
+        group_by(sale_date_year) %>%
+        summarize(
+          dl = quantile(div, 0.025),
+          dm = quantile(div, 0.5),
+          dh = quantile(div, 0.975))
     })
   })
 
@@ -90,8 +97,8 @@ shinyServer(function(input, output) {
 
     isolate({
       ggplot(boot_df(), aes(x = sale_date_year)) +
-        geom_ribbon(aes(ymin = boot_low, ymax = boot_high), alpha = 0.5) +
-        geom_line(aes(y = boot_med))
+        geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
+        geom_line(aes(y = dm))
     })
   })
 
