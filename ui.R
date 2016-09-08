@@ -8,13 +8,14 @@ section_missing <- div(
 
 section_example <- div(
   p("Now, what is the balance of genres that we want to assume when guessing the value of these next ones? If we assume that any genre has an equal chance of missing from the dataset, then all sliders should be set to the same value. If, on the other hand, we assume that one genre has a greater chance of being missing - e.g., that missing paintings have a greater chance of actually being abstract than still life - then we would set a higher value for abstract artworks and a lower value for still lifes."),
+  p("The default values for these sliders match the overall ratios of these genres as observed in the original dataset."),
   inputPanel(
-    sliderInput("abstract", "Abstract", min = 0, max = 1, value = 0.5),
-    sliderInput("genre", "Genre", min = 0, max = 1, value = 0.5),
-    sliderInput("history", "History", min = 0, max = 1, value = 0.5),
-    sliderInput("landscape", "Landscape", min = 0, max = 1, value = 0.5),
-    sliderInput("portrait", "Portrait", min = 0, max = 1, value = 0.5),
-    sliderInput("still_life", "Still Life", min = 0, max = 1, value = 0.5)),
+    sliderInput("abstract", "Abstract", min = 0, max = 1, value = gstart[["abstract"]]),
+    sliderInput("genre", "Genre", min = 0, max = 1, value = gstart[["Genre"]]),
+    sliderInput("history", "History", min = 0, max = 1, value = gstart[["abstract"]]),
+    sliderInput("landscape", "Landscape", min = 0, max = 1, value = gstart[["Landscape"]]),
+    sliderInput("portrait", "Portrait", min = 0, max = 1, value = gstart[["Portrait"]]),
+    sliderInput("still_life", "Still Life", min = 0, max = 1, value = gstart[["Still Life"]])),
   p("The simulated distribution of genres over time, using new probabilities."),
   plotOutput("sim_plot"))
 
