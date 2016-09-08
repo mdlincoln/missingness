@@ -2,8 +2,6 @@ library(shiny)
 library(ggplot2)
 library(dplyr)
 library(vegan)
-library(bootr)
-library(broom)
 library(GPIdata)
 library(purrr)
 
@@ -58,15 +56,29 @@ shinyServer(function(input, output) {
 
       message("Rows of bootstrapped replicates: ", nrow(booted_list))
 
-      setProgress(message = "Calculating diversity of all replicates...", detail = "")
-      diversities <- booted_list %>%
-        count(iteration, boot, sale_date_year, genre) %>%
-        group_by(iteration, boot, sale_date_year) %>%
+      setProgress(message = "Producing windowed replicates...", value = 0, detail = "")
+
+      window_size <- 10
+      window_range <- (start_year + window_size):end_year
+
+      windowed_list <- map_df(window_range, function(x) {
+        incProgress(amount = 1/length(window_range), detail = paste0("Year: ", x))
+        booted_list %>% filter(between(sale_date_year, x - 10, x))
+      }, .id = "window_pos") %>%
+        mutate(window_pos = as.integer(as.character(window_pos)))
+
+      names(windowed_list)
+      message("Rows of windowed replicates: ", nrow(windowed_list))
+
+      setProgress(message = paste("Calculating diversity of", nrow(windowed_list), " replicates..."), detail = "")
+      diversities <- windowed_list %>%
+        count(iteration, boot, window_pos, genre) %>%
+        group_by(iteration, boot, window_pos) %>%
         summarize(div = diversity(n, index = "shannon"))
 
       setProgress(message = "Calculating diversity ranges...")
       diversities %>%
-        group_by(sale_date_year) %>%
+        group_by(window_pos) %>%
         summarize(
           dl = quantile(div, 0.025),
           dm = quantile(div, 0.5),
@@ -96,7 +108,7 @@ shinyServer(function(input, output) {
     }
 
     isolate({
-      ggplot(boot_df(), aes(x = sale_date_year)) +
+      ggplot(boot_df(), aes(x = window_pos)) +
         geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
         geom_line(aes(y = dm))
     })
