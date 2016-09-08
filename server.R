@@ -51,7 +51,7 @@ shinyServer(function(input, output) {
         incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
         na_simmed_df %>%
           group_by(iteration, sale_date_year) %>%
-          sample_frac(size = 0.8, replace = FALSE)
+          sample_frac(size = 0.8, replace = TRUE)
       }, .id = "boot")
 
       message("Rows of bootstrapped replicates: ", nrow(booted_list))
