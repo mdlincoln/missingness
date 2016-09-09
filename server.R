@@ -112,7 +112,7 @@ shinyServer(function(input, output) {
 
     # Isolate this calculation and plot behind an actionButton
     if (input$calc == 0) {
-      stop("Check your inputs, then click \"Calculate!\" to run the simulation and plot the results")
+      stop("Set your inputs, then click \"Calculate!\" to run the simulation and plot the results")
     }
 
     isolate({
