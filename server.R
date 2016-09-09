@@ -55,10 +55,9 @@ shinyServer(function(input, output) {
 
       setProgress(message = "Producing windowed replicates...", value = 0, detail = "")
 
-      window_size <- 10
-      window_range <- (start_year + window_size):end_year
+      window_range <- (start_year + input$window_size):end_year
 
-      windowed_list <- map_df(window_range, function(x) {
+      windowed_list <- map_df(set_names(window_range), function(x) {
         incProgress(amount = 1/length(window_range), detail = paste0("Year: ", x))
         na_simmed_df %>% filter(between(sale_date_year, x - 10, x))
       }, .id = "window_pos") %>%
