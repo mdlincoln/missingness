@@ -50,17 +50,8 @@ shinyServer(function(input, output) {
 
       message("Rows of simulated data: ", nrow(na_simmed_df))
 
-      setProgress(message = "Bootstrapping replicates...", value = 0)
-      # For each of the simulation iterations, bootstrap n_boot samples from
-      # each year (sampling 80% of records from each year)
-      booted_list <- map_df(seq_len(input$n_boot), function(x) {
-        incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
-        na_simmed_df %>%
-          group_by(iteration, sale_date_year) %>%
-          sample_frac(size = 0.8, replace = TRUE)
-      }, .id = "boot")
-
-      message("Rows of bootstrapped replicates: ", nrow(booted_list))
+      # Produce rolling window before taking bootstrap samples for diversity
+      # calculations
 
       setProgress(message = "Producing windowed replicates...", value = 0, detail = "")
 
@@ -69,15 +60,27 @@ shinyServer(function(input, output) {
 
       windowed_list <- map_df(window_range, function(x) {
         incProgress(amount = 1/length(window_range), detail = paste0("Year: ", x))
-        booted_list %>% filter(between(sale_date_year, x - 10, x))
+        na_simmed_df %>% filter(between(sale_date_year, x - 10, x))
       }, .id = "window_pos") %>%
-        mutate(window_pos = as.integer(as.character(window_pos)))
+        mutate(window_pos = as.integer(as.character(window_pos))) %>%
+        select(-sale_date_year)
 
-      names(windowed_list)
       message("Rows of windowed replicates: ", nrow(windowed_list))
 
-      setProgress(message = paste("Calculating diversity of", nrow(windowed_list), " replicates..."), detail = "")
-      diversities <- windowed_list %>%
+      setProgress(message = "Bootstrapping replicates...", value = 0)
+      # For each of the simulation iterations, bootstrap n_boot samples from
+      # each year (sampling 80% of records from each year)
+      booted_list <- map_df(seq_len(input$n_boot), function(x) {
+        incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
+        windowed_list %>%
+          group_by(iteration, window_pos) %>%
+          sample_frac(size = 0.8, replace = TRUE)
+      }, .id = "boot")
+
+      message("Rows of bootstrapped replicates: ", nrow(booted_list))
+
+      setProgress(message = paste("Calculating diversity of", format(nrow(windowed_list), big.mark = ","), " replicates..."), detail = "")
+      diversities <- booted_list %>%
         count(iteration, boot, window_pos, genre) %>%
         group_by(iteration, boot, window_pos) %>%
         summarize(div = diversity(n, index = "shannon"))
