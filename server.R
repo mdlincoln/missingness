@@ -67,7 +67,7 @@ shinyServer(function(input, output) {
 
       setProgress(message = "Bootstrapping replicates...", value = 0)
       # For each of the simulation iterations, bootstrap n_boot samples from
-      # each year (sampling 80% of records from each year)
+      # each window
       booted_list <- map_df(seq_len(input$n_boot), function(x) {
         incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
         windowed_list %>%
