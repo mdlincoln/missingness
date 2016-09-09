@@ -52,7 +52,6 @@ shinyServer(function(input, output) {
 
       # Produce rolling window before taking bootstrap samples for diversity
       # calculations
-
       setProgress(message = "Producing windowed replicates...", value = 0, detail = "")
 
       window_range <- (start_year + input$window_size):end_year
@@ -121,5 +120,4 @@ shinyServer(function(input, output) {
         geom_line(aes(y = dm))
     })
   })
-
 })
