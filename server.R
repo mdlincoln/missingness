@@ -73,7 +73,7 @@ shinyServer(function(input, output) {
         incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
         windowed_list %>%
           group_by(iteration, window_pos) %>%
-          sample_frac(size = 0.8, replace = TRUE)
+          sample_frac(size = 1, replace = TRUE)
       }, .id = "boot")
 
       message("Rows of bootstrapped replicates: ", nrow(booted_list))
