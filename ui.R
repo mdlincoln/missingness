@@ -24,7 +24,7 @@ section_simulated <- div(
   inputPanel(
     sliderInput("n_sims", "Missing data simulations", min = 10, max = 100, value = 50),
     sliderInput("n_boot", "Bootstrap iterations", min = 1, max = 10, value = 5),
-    sliderInput("window_size", "Rolling window size", min = 1, max = 20, value = 10),
+    sliderInput("window_size", "Rolling window size", min = 1, max = 20, value = 1),
     actionButton("calc", "Simulate!")),
   p("A bootstrapped estimation of genre diversity over time"),
   plotOutput("div_plot"))
