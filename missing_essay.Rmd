@@ -118,9 +118,7 @@ Having figured out how we will impute possibilities for individual missing recor
 5. Compute the median annual diversity from all these possibilities, as well as a 95% confidence interval.
 
 ```{r no_replicates}
-ny <- 10
-ng <- 10
-nb <- 10
+nb <- 100
 window_size <- 10
 
 window_range <- seq(
@@ -131,8 +129,8 @@ window_range <- seq(
 
 ```{r stream_boot}
 stream_boot <- function(df) {
-  imputed_years <- df %>% impute_year(n = ny)
-  imputed_genres <- imputed_years %>% impute_genre(n = ng)
+  imputed_years <- df %>% impute_year(n = 1)
+  imputed_genres <- imputed_years %>% impute_genre(n = 1)
 
   # Roll a window across these new data
   roll_k <- map_df(set_names(window_range), function(w) {
@@ -151,14 +149,9 @@ stream_boot <- function(df) {
 ```{r sim_years}
 bootstrapped <- boot(kg, n = nb)
 
-registerDoFuture()
-plan(multiprocess)
-
-diversities <- foreach(i = seq_len(nb), .inorder = FALSE) %dopar% {
-  bootstrapped %>% 
-    filter(boot_iteration == i) %>% 
-    do(stream_boot(.))
-}
+diversities <- bootstrapped %>% 
+  group_by(boot_iteration) %>% 
+  do(stream_boot(.))
 
 quantiles <- diversities %>% 
   group_by(window_point) %>% 
