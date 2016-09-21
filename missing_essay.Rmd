@@ -1,0 +1,175 @@
+---
+title: "Imputing Missing Data in the Knoedler Stockbooks"
+output: html_notebook
+---
+
+```{r libraries, include = FALSE}
+library(ggplot2)
+library(dplyr)
+library(vegan)
+library(GPIdata)
+library(purrr)
+library(dateSampler)
+library(doFuture)
+```
+
+The Knoedler stockbooks present us with a double problem if we want to look at how the firm's offerings of different genres of artworks changed over time.
+A sizable number of Knoedler records are missing crucial information, such as precise sale dates, prices, and artwork genres.
+We will encounter this same issue in artist and collector life dates, auction sale dates, and so forth.
+Normally, we would simply discard those records when doing analyses that require the presence of those values.
+However, simply discarding records means that we would base our summary claims (about, say, the influence of artwork genre on sale price) on a small sample of all the sales that we know did, indeed, take place.
+How can we determine whether those missing records might invalidate the conclusions we draw?
+
+One intuitive way to address this issue is through what is known as [multiple imputation](https://en.wikipedia.org/wiki/Imputation_(statistics)#Multiple_imputation), in which we articulate informed guesses at what those missing values might be, and then run dozens or hundreds of simulations that stochastically generate values for those missing records within the boundaries set by those guesses.
+From each of these new datasets, we can run our intended measruements and then describe _a range of likely results_ (as opposed to just _one single_ result) that take in to account the uncertainty produced by those missing values.
+
+```{r sold_knoedler}
+kg <- knoedler %>%
+  filter(transaction == "Sold" & (is.na(sale_date_year) | sale_date_year < 1973)) %>%
+  select(stock_book_no, genre, sale_date_year)
+```
+
+A handful of sales are missing sale years. 
+These can be imputed by looking at the stock book in which the sale is noted.
+Each stock book covers a certain range of years: by sampling randomly from those possible years, we can impute a reasonable date.
+Moreover, we can weight this sample based on the distirbution of years within a given stockbook, e.g. if a stockbook has 500 sales from 1892, but only 10 from 1893, then the vast majority of the time, the year 1892 will be assigned to the object (though a slim chance of being assigned to 1893 would still be there.)
+
+```{r impute_year}
+# For every given stockbook, what are the probabilities of a sale happening on
+# a year within that book? These probabilities will be fed into the simulation.
+year_counts <- kg %>% 
+  filter(!is.na(sale_date_year)) %>% 
+  count(stock_book_no, sale_date_year)
+  
+yearly_probs <- map(set_names(1:11), function(x) {
+    yr <- filter(year_counts, stock_book_no == x)
+    list(years = yr[["sale_date_year"]], probs = yr[["n"]])
+  })
+
+# This helper function randomly samples n years from the distribution found in
+# book_no
+generate_years <- function(book_no, n) {
+  yp <- yearly_probs[[book_no]]
+  sample(yp[["years"]], size = n, replace = TRUE, prob = yp[["probs"]])
+}
+
+# Given a dataframe, creates n imputed years - replicating years when known, and
+# sampling new ones when unknown.
+impute_year <- function(df, n, year_name = "sale_date_year", book_name = "stock_book_no", rep_name = "year_replicate") {
+  new_years <- map2(df[[year_name]], df[[book_name]], function(x, y) {
+    if (is.na(x)) {
+      generate_years(y, n)
+    } else {
+      rep(x, times = n)
+    }
+  }) %>% flatten_int()
+  
+  repped_df <- row_rep(df, n = n, .id = rep_name) %>% ungroup()
+  repped_df$imputed_year <- new_years
+  repped_df
+}
+```
+
+We must account for those works that we know were sold, but for which a genre cannot be determined based on the recorded title alone. 
+We can simulate the possible values of genre for those undetermined artworks, either based off the distribution of genres present in teh rest of the dataset, or with a different set of weights. 
+For example, if we believe that those artworks with an undetermined genre are more likely to be abstract than anything else, we can ensure that missing genres are set to abstract 90% of the time, and to another genre only 10% of the time. 
+Running this simulation many times, and making the same diversity/heterogeneity measurements each time, lets us measure the effect of uncertainty - and the effect of competing assumptions about the true nature of those missing data - on the metric we are trying to capture.
+
+```{r impute_genre}
+genre_probs <- kg %>%
+  filter(!is.na(genre)) %>%
+  count(genre)
+
+generate_genres <- function(n) {
+  sample(genre_probs[["genre"]], prob = genre_probs[["n"]], size = n, replace = TRUE)
+}
+
+impute_genre <- function(df, n, genre_name = "genre", rep_name = "genre_replicate") {
+  new_genres <- map(df[[genre_name]], function(x) {
+    if (is.na(x)) {
+      generate_genres(n)
+    } else {
+      rep(x, times = n)
+    }
+  }) %>% flatten_chr()
+  
+  repped_df <- row_rep(df, n = n, .id = rep_name) %>% ungroup()
+  repped_df$imputed_genre <- new_genres
+  repped_df
+}
+```
+
+```{r boot_sample}
+boot <- function(df, n, rep_name = "boot_iteration") {
+  df %>% 
+    row_rep(n = n, .id = rep_name) %>% 
+    group_by(boot_iteration) %>% 
+    sample_frac(1, replace = TRUE) %>% 
+    ungroup()
+}
+```
+
+Having figured out how we will impute possibilities for individual missing records, we can now chain these methods together:
+
+1. Conduct [bootstrap resampling]() of the full data (including missing values) `nb` times. 
+2. For each of the `nb` bootstraps, impute years `ny` times.
+3. For each `nb * ny` iterations, impute genres `ng` times.
+4. Calculate the annual genre diversity for each of the `ny * ng * nb` replicates along a rolling window of size `window_size`.
+5. Compute the median annual diversity from all these possibilities, as well as a 95% confidence interval.
+
+```{r no_replicates}
+ny <- 10
+ng <- 10
+nb <- 10
+window_size <- 10
+
+window_range <- seq(
+  from = min(kg$sale_date_year, na.rm = TRUE) + window_size,
+  to = max(kg$sale_date_year, na.rm = TRUE)
+)
+```
+
+```{r stream_boot}
+stream_boot <- function(df) {
+  imputed_years <- df %>% impute_year(n = ny)
+  imputed_genres <- imputed_years %>% impute_genre(n = ng)
+
+  # Roll a window across these new data
+  roll_k <- map_df(set_names(window_range), function(w) {
+    imputed_genres %>% filter(between(imputed_year, w - 10, w))
+  }, .id = "window_point") %>% 
+    mutate(window_point = as.integer(as.character(window_point)))
+  
+  roll_k %>% 
+    count(year_replicate, genre_replicate, boot_iteration, window_point, genre) %>% 
+    group_by(year_replicate, genre_replicate, boot_iteration, window_point) %>% 
+    summarize(div = diversity(n, index = "shannon")) %>% 
+    ungroup()
+}
+```
+
+```{r sim_years}
+bootstrapped <- boot(kg, n = nb)
+
+registerDoFuture()
+plan(multiprocess)
+
+diversities <- foreach(i = seq_len(nb), .inorder = FALSE) %dopar% {
+  bootstrapped %>% 
+    filter(boot_iteration == i) %>% 
+    do(stream_boot(.))
+}
+
+quantiles <- diversities %>% 
+  group_by(window_point) %>% 
+  summarize(
+    dl = quantile(div, 0.025),
+    dm = quantile(div, 0.5),
+    dh = quantile(div, 0.975))
+```
+
+```{r plot_diversity}
+ggplot(quantiles, aes(x = window_point)) +
+  geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
+  geom_line(aes(y = dm))
+```
