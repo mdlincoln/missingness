@@ -2,4 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
-*.nb.html
+*.html
+*_cache
+*_files

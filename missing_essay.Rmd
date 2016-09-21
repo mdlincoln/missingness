@@ -1,6 +1,5 @@
 ---
 title: "Imputing Missing Data in the Knoedler Stockbooks"
-output: html_notebook
 ---
 
 ```{r libraries, include = FALSE}
@@ -11,6 +10,26 @@ library(GPIdata)
 library(purrr)
 library(dateSampler)
 library(doFuture)
+
+opts_chunk$set(cache = TRUE, echo = FALSE, sanitize = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+opts_knit$set(animation.fun = function(x, options, format = "gif") {
+  x = c(knitr:::sans_ext(x), knitr:::file_ext(x))
+  fig.num = options$fig.num
+  format = sub("^[.]", "", format)
+  fig.fname = paste0(sub(paste0(fig.num, "$"), "*", x[1]), 
+                     ".", x[2])
+  mov.fname = paste0(sub(paste0(fig.num, "$"), "", x[1]), ".", 
+                     format)
+  
+  # order correctly
+  figs <- Sys.glob(fig.fname)
+  figs <- figs[order(as.numeric(stringr::str_match(figs, paste0("(\\d+)\\.", x[2]))[, 2]))]
+
+  animation::im.convert(figs, output = mov.fname)
+
+  sprintf("![%s](%s)", options$label, paste0(opts_knit$get("base.url"), mov.fname))
+})
+
 ```
 
 The Knoedler stockbooks present us with a double problem if we want to look at how the firm's offerings of different genres of artworks changed over time.
@@ -161,7 +180,18 @@ quantiles <- diversities %>%
     dh = quantile(div, 0.975))
 ```
 
-```{r plot_diversity}
+```{r plot_diversity, fig.show = "animate"}
+library(gganimate)
+animation::ani.options(interval = .2)
+
+boot_anim <- ggplot(diversities, aes(x = window_point, y = div, frame = boot_iteration)) +
+  geom_line(aes(cumulative = TRUE, group = boot_iteration), alpha = 0.1) +
+  geom_line(aes(frame = boot_iteration), color = "red", size = 1)
+
+gg_animate(boot_anim)
+```
+
+```{r}
 ggplot(quantiles, aes(x = window_point)) +
   geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
   geom_line(aes(y = dm))
