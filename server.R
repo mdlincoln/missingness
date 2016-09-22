@@ -164,7 +164,9 @@ shinyServer(function(input, output) {
     })
 
     withProgress(message = "Rendering plot...", {
-      gg_animate(p, "outfile.gif", interval = c(rep(0.1, input$n_boot - 1), 3))
+      isolate({
+        gg_animate(p, "outfile.gif", interval = c(rep(0.1, input$n_boot - 1), 3))
+      })
     })
 
     # Return a list containing the filename
