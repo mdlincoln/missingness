@@ -8,9 +8,6 @@ library(dateSampler)
 
 shinyServer(function(input, output) {
 
-  registerDoFuture()
-  plan(multiprocess)
-
   # Prerequisites ----
 
   na_indices <- reactive({
@@ -21,7 +18,6 @@ shinyServer(function(input, output) {
   # Generate a dataset with artificially missing data
   kna <- reactive({
     kg %>%
-      inner_join(knoedler_stockbook_years, by = "stock_book_no") %>%
       mutate(genre = if_else(na_indices(), true = NA_character_, false = genre)) %>%
       select(stock_book_no, sale_date_year, genre)
   })
