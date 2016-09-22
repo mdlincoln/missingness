@@ -1,11 +1,16 @@
+library(purrr)
 library(shiny)
 library(ggplot2)
 library(dplyr)
 library(vegan)
 library(GPIdata)
-library(purrr)
+library(dateSampler)
+library(doFuture)
 
 shinyServer(function(input, output) {
+
+  registerDoFuture()
+  plan(multiprocess)
 
   # Prerequisites ----
 
@@ -17,8 +22,9 @@ shinyServer(function(input, output) {
   # Generate a dataset with artificially missing data
   kna <- reactive({
     kg %>%
+      inner_join(knoedler_stockbook_years, by = "stock_book_no") %>%
       mutate(genre = if_else(na_indices(), true = NA_character_, false = genre)) %>%
-      select(sale_date_year, genre)
+      select(stock_book_no, sale_date_year, genre)
   })
 
   # Create a vector of probabilities for the newly assigned genre values
@@ -29,63 +35,96 @@ shinyServer(function(input, output) {
 
   # Simulation ----
 
-  sim_df <- function(df) {
-    # Generate a sample of all new genres based on the given weights
-    sim_genres <- sample(gnames, prob = gprobs(), size = nrow(df), replace = TRUE)
-    # Produce a version of kna() with all NA genres filled in. Works with an
-    # assigned genre value will keep that value.
-    df %>% mutate(genre = if_else(is.na(genre), sim_genres, genre))
+  # This helper function randomly samples n years from the distribution found in
+  # book_no
+  generate_years <- function(book_no, n) {
+    yp <- yearly_probs[[book_no]]
+    sample(yp[["years"]], size = n, replace = TRUE, prob = yp[["probs"]])
   }
 
+  # Given a dataframe, creates n imputed years - replicating years when known, and
+  # sampling new ones when unknown.
+  impute_year <- function(df, n, year_name = "sale_date_year", book_name = "stock_book_no", rep_name = "year_replicate") {
+    new_years <- map2(df[[year_name]], df[[book_name]], function(x, y) {
+      if (is.na(x)) {
+        generate_years(y, n)
+      } else {
+        rep(x, times = n)
+      }
+    }) %>% flatten_int()
+
+    repped_df <- row_rep(df, n = n, .id = rep_name) %>% ungroup()
+    repped_df$imputed_year <- new_years
+    repped_df
+  }
+
+  generate_genres <- function(n) {
+    sample(gnames, prob = gprobs(), size = n, replace = TRUE)
+  }
+
+  impute_genre <- function(df, n, genre_name = "genre", rep_name = "genre_replicate") {
+    new_genres <- map(df[[genre_name]], function(x) {
+      if (is.na(x)) {
+        generate_genres(n)
+      } else {
+        rep(x, times = n)
+      }
+    }) %>% flatten_chr()
+
+    repped_df <- row_rep(df, n = n, .id = rep_name) %>% ungroup()
+    repped_df$imputed_genre <- new_genres
+    repped_df
+  }
+
+  # Bootstrap ----
+
+  boot <- function(df, n, rep_name = "boot_iteration") {
+    df %>%
+      row_rep(n = n, .id = rep_name) %>%
+      group_by(boot_iteration) %>%
+      sample_frac(1, replace = TRUE) %>%
+      ungroup()
+  }
+
+  window_range <- reactive({
+    seq(
+      from = min(kna()$sale_date_year, na.rm = TRUE) + input$window_size,
+      to = max(kna()$sale_date_year, na.rm = TRUE))
+  })
+
+  stream_boot <- function(df) {
+    imputed_years <- df %>% impute_year(n = 1)
+    imputed_genres <- imputed_years %>% impute_genre(n = 1)
+
+    # Roll a window across these new data
+    roll_k <- map_df(set_names(window_range()), function(w) {
+      imputed_genres %>% filter(between(imputed_year, w - input$window_size, w))
+    }, .id = "window_point") %>%
+      mutate(window_point = as.integer(as.character(window_point)))
+
+    roll_k %>%
+      count(year_replicate, genre_replicate, boot_iteration, window_point, genre) %>%
+      group_by(year_replicate, genre_replicate, boot_iteration, window_point) %>%
+      summarize(div = diversity(n, index = "shannon")) %>%
+      ungroup()
+  }
+
+
   boot_df <- reactive({
-    withProgress(message = "Simulating missing values...", value = 0, {
 
-      # For each simulation iteration, produce a version of the source data with
-      # genres filled in using the sim_df function. Returns a combined dataframe
-      # that can be grouped by "iteration"
-      na_simmed_df <- map_df(seq_len(input$n_sims), function(x) {
-        incProgress(1/input$n_sims, detail = paste0(x, " of ", input$n_sims, " iterations..."))
-        sim_df(kna())
-      }, .id = "iteration")
+    withProgress({
 
-      message("Rows of simulated data: ", nrow(na_simmed_df))
+      setProgress(message = "Bootstrap sampling data..")
+      bootstrapped <- boot(kna(), n = input$n_boot)
 
-      # Produce rolling window before taking bootstrap samples for diversity
-      # calculations
-      setProgress(message = "Producing windowed replicates...", value = 0, detail = "")
+      setProgress(message = "Imputing missing values...")
+      diversities <- bootstrapped %>%
+        group_by(boot_iteration) %>%
+        do(stream_boot(.))
 
-      window_range <- (start_year + input$window_size):end_year
-
-      windowed_list <- map_df(set_names(window_range), function(x) {
-        incProgress(amount = 1/length(window_range), detail = paste0("Year: ", x))
-        na_simmed_df %>% filter(between(sale_date_year, x - 10, x))
-      }, .id = "window_pos") %>%
-        mutate(window_pos = as.integer(as.character(window_pos))) %>%
-        select(-sale_date_year)
-
-      message("Rows of windowed replicates: ", nrow(windowed_list))
-
-      setProgress(message = "Bootstrapping replicates...", value = 0)
-      # For each of the simulation iterations, bootstrap n_boot samples from
-      # each window
-      booted_list <- map_df(seq_len(input$n_boot), function(x) {
-        incProgress(1/input$n_boot, detail = paste0(x, " of ", input$n_boot, " replicates..."))
-        windowed_list %>%
-          group_by(iteration, window_pos) %>%
-          sample_frac(size = 1, replace = TRUE)
-      }, .id = "boot")
-
-      message("Rows of bootstrapped replicates: ", nrow(booted_list))
-
-      setProgress(message = paste("Calculating diversity of", format(nrow(windowed_list), big.mark = ","), " replicates..."), detail = "")
-      diversities <- booted_list %>%
-        count(iteration, boot, window_pos, genre) %>%
-        group_by(iteration, boot, window_pos) %>%
-        summarize(div = diversity(n, index = "shannon"))
-
-      setProgress(message = "Calculating diversity ranges...")
+      setProgress(message = "Calculating diversity...")
       diversities %>%
-        group_by(window_pos) %>%
+        group_by(window_point) %>%
         summarize(
           dl = quantile(div, 0.025),
           dm = quantile(div, 0.5),
@@ -102,7 +141,7 @@ shinyServer(function(input, output) {
   })
 
   output$sim_plot <- renderPlot({
-    ggplot(sim_df(kna()), aes(x = sale_date_year, fill = genre)) +
+    ggplot(impute_genre(kna(), 1), aes(x = sale_date_year, fill = imputed_genre)) +
       geom_histogram(binwidth = 3) +
       scale_fill_brewer(type = "qual", na.value = "gray50")
   })
@@ -115,7 +154,7 @@ shinyServer(function(input, output) {
     }
 
     isolate({
-      ggplot(boot_df(), aes(x = window_pos)) +
+      ggplot(boot_df(), aes(x = window_point)) +
         geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
         geom_line(aes(y = dm))
     })
