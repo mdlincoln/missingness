@@ -1,6 +1,7 @@
 library(purrr)
 library(shiny)
 library(ggplot2)
+library(gganimate)
 library(dplyr)
 library(vegan)
 library(GPIdata)
@@ -118,17 +119,17 @@ shinyServer(function(input, output) {
       bootstrapped <- boot(kna(), n = input$n_boot)
 
       setProgress(message = "Imputing missing values...")
-      diversities <- bootstrapped %>%
+      bootstrapped %>%
         group_by(boot_iteration) %>%
         do(stream_boot(.))
 
-      setProgress(message = "Calculating diversity...")
-      diversities %>%
-        group_by(window_point) %>%
-        summarize(
-          dl = quantile(div, 0.025),
-          dm = quantile(div, 0.5),
-          dh = quantile(div, 0.975))
+      # setProgress(message = "Calculating diversity...")
+      # diversities %>%
+      #   group_by(window_point) %>%
+      #   summarize(
+      #     dl = quantile(div, 0.025),
+      #     dm = quantile(div, 0.5),
+      #     dh = quantile(div, 0.975))
     })
   })
 
@@ -146,17 +147,33 @@ shinyServer(function(input, output) {
       scale_fill_brewer(type = "qual", na.value = "gray50")
   })
 
-  output$div_plot <- renderPlot({
+  output$div_plot <- renderImage({
 
     # Isolate this calculation and plot behind an actionButton
     if (input$calc == 0) {
       stop("Set your inputs, then click \"Calculate!\" to run the simulation and plot the results")
     }
 
+    # A temp file to save the output.
+    # This file will be removed later by renderImage
+    outfile <- tempfile(fileext = ".gif")
+
+
     isolate({
-      ggplot(boot_df(), aes(x = window_point)) +
-        geom_ribbon(aes(ymin = dl, ymax = dh), alpha = 0.5) +
-        geom_line(aes(y = dm))
+      p <- ggplot(boot_df(), aes(x = window_point, y = div, frame = boot_iteration)) +
+        geom_line(aes(cumulative = TRUE, group = boot_iteration), alpha = 7 / input$n_boot) +
+        geom_line(aes(frame = boot_iteration), color = "red", size = 1)
     })
-  })
+
+    withProgress(message = "Rendering plot...", {
+      gg_animate(p, "outfile.gif", interval = c(rep(0.1, input$n_boot - 1), 3))
+    })
+
+    # Return a list containing the filename
+    list(src = "outfile.gif",
+         contentType = 'image/gif'
+         # width = 400,
+         # height = 300,
+         # alt = "This is alternate text"
+    )}, deleteFile = TRUE)
 })
