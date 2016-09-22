@@ -1,4 +1,4 @@
-library(GPIdata)
+load("knoedler.rda")
 library(purrr)
 library(dplyr)
 

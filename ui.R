@@ -26,7 +26,7 @@ section_simulated <- div(
     sliderInput("window_size", "Rolling window size", min = 1, max = 20, value = 1),
     actionButton("calc", "Simulate!")),
   p("A bootstrapped estimation of genre diversity over time"),
-  imageOutput("div_plot"))
+  plotOutput("div_plot"))
 
 shinyUI(fluidPage(
   # Application title

@@ -6,7 +6,7 @@ library(dplyr)
 library(vegan)
 library(dateSampler)
 
-shinyServer(function(input, output) {
+shinyServer(function(input, output, session) {
 
   # Prerequisites ----
 
@@ -98,8 +98,8 @@ shinyServer(function(input, output) {
       mutate(window_point = as.integer(as.character(window_point)))
 
     roll_k %>%
-      count(year_replicate, genre_replicate, boot_iteration, window_point, genre) %>%
-      group_by(year_replicate, genre_replicate, boot_iteration, window_point) %>%
+      count(year_replicate, genre_replicate, window_point, genre) %>%
+      group_by(year_replicate, genre_replicate, window_point) %>%
       summarize(div = diversity(n, index = "shannon")) %>%
       ungroup()
   }
@@ -107,24 +107,28 @@ shinyServer(function(input, output) {
 
   boot_df <- reactive({
 
-    withProgress({
+    pb <- Progress$new()
+    on.exit(pb$close())
 
-      setProgress(message = "Bootstrap sampling data..")
-      bootstrapped <- boot(kna(), n = input$n_boot)
+    pb$set(message = "Bootstrap sampling data..")
+    bootstrapped <- boot(kna(), n = input$n_boot)
 
-      setProgress(message = "Imputing missing values...")
-      bootstrapped %>%
-        group_by(boot_iteration) %>%
-        do(stream_boot(.))
+    pb$set(message = "Imputing missing values...", value = 0)
+    bootstrapped %>%
+      group_by(boot_iteration) %>%
+      by_slice(function(x) {
+        pb$inc(amount = 1/input$n_boot)
+        stream_boot(x)
+      }, .collate = "rows")
+  })
 
-      # setProgress(message = "Calculating diversity...")
-      # diversities %>%
-      #   group_by(window_point) %>%
-      #   summarize(
-      #     dl = quantile(div, 0.025),
-      #     dm = quantile(div, 0.5),
-      #     dh = quantile(div, 0.975))
-    })
+  quantiles <- reactive({
+    boot_df() %>%
+        group_by(window_point) %>%
+        summarize(
+          dl = quantile(div, 0.025),
+          dm = quantile(div, 0.5),
+          dh = quantile(div, 0.975))
   })
 
   # Plots ----
@@ -141,35 +145,47 @@ shinyServer(function(input, output) {
       scale_fill_brewer(type = "qual", na.value = "gray50")
   })
 
-  output$div_plot <- renderImage({
-
+  output$div_plot <- renderPlot({
     # Isolate this calculation and plot behind an actionButton
     if (input$calc == 0) {
       stop("Set your inputs, then click \"Calculate!\" to run the simulation and plot the results")
     }
 
-    # A temp file to save the output.
-    # This file will be removed later by renderImage
-    outfile <- tempfile(fileext = ".gif")
-
-
     isolate({
-      p <- ggplot(boot_df(), aes(x = window_point, y = div, frame = boot_iteration)) +
-        geom_line(aes(cumulative = TRUE, group = boot_iteration), alpha = 7 / input$n_boot) +
-        geom_line(aes(frame = boot_iteration), color = "red", size = 1)
+      ggplot(boot_df(), aes(x = window_point, y = div)) +
+        geom_line(aes(group = boot_iteration), alpha = 7 / input$n_boot) +
+        stat_summary(fun.y = "median", color = "red", size = 1, geom = "line")
     })
+  })
 
-    withProgress(message = "Rendering plot...", {
-      isolate({
-        gg_animate(p, "outfile.gif", interval = c(rep(0.1, input$n_boot - 1), 3))
-      })
-    })
-
-    # Return a list containing the filename
-    list(src = "outfile.gif",
-         contentType = 'image/gif'
-         # width = 400,
-         # height = 300,
-         # alt = "This is alternate text"
-    )}, deleteFile = TRUE)
+  # output$div_plot <- renderImage({
+  #
+  #   # Isolate this calculation and plot behind an actionButton
+  #   if (input$calc == 0) {
+  #     stop("Set your inputs, then click \"Calculate!\" to run the simulation and plot the results")
+  #   }
+  #
+  #   # A temp file to save the output.
+  #   # This file will be removed later by renderImage
+  #   outfile <- tempfile(fileext = ".gif")
+  #
+  #   isolate({
+  #     p <- ggplot(boot_df(), aes(x = window_point, y = div, frame = boot_iteration)) +
+  #       geom_line(aes(cumulative = TRUE, group = boot_iteration), alpha = 7 / input$n_boot) +
+  #       geom_line(aes(frame = boot_iteration), color = "red", size = 1)
+  #   })
+  #
+  #   withProgress(message = "Rendering plot...", {
+  #     isolate({
+  #       gg_animate(p, "outfile.gif", interval = c(rep(0.1, input$n_boot - 1), 3))
+  #     })
+  #   })
+  #
+  #   # Return a list containing the filename
+  #   list(src = "outfile.gif",
+  #        contentType = 'image/gif'
+  #        # width = 400,
+  #        # height = 300,
+  #        # alt = "This is alternate text"
+  #   )}, deleteFile = TRUE)
 })
