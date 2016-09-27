@@ -1,7 +1,10 @@
 library(shiny)
 
 section_missing <- div(
-  p("The original Knoedler data hae very few missing gnere labels. For the purposes of demonstration, we can randomly add a few more. What percentage of these records should have missing genre?"),
+  p("A sizable number of Knoedler records are missing crucial information, such as precise sale dates, prices, and artwork genres. We will encounter this same issue in artist and collector life dates, auction sale dates, and so forth. Normally, we would simply discard those records when doing analyses that require the presence of those values. However, simply discarding records means that we would base our summary claims (about, say, the influence of artwork genre on sale price) on a small sample of all the sales that we know did, indeed, take place. How can we determine whether those missing records might invalidate the conclusions we draw?"),
+  p("One intuitive way to address this issue is through what is known as multiple imputation, in which we articulate informed guesses at what those missing values might be, and then run dozens or hundreds of simulations that stochastically generate values for those missing records within the boundaries set by those guesses, and then return a range of likely results (using whichever metric we were computing in the first place) that take in to account the uncertainty produced by those missing values."),
+  tags$hr(),
+  p("The original Knoedler data have very few missing gnere labels. For the purposes of demonstration, we can randomly add a few more. What additinoal percentage of these records should have missing genre?"),
   inputPanel(sliderInput("percent_missing", "Percent missing", min = 0, max = 1, value = 0, step = 0.1)),
   p("The original distribution of genres over time, including missing values."),
   plotOutput("static_plot", width = "800px"))
@@ -21,6 +24,7 @@ section_example <- div(
 
 section_simulated <- div(
   p("Because the missing value replacement process is randomized, we can't just do it once. We need to repeat it many times over, generating a ", tags$em("range"), " of possible values."),
+  p("To reduce the noise from year-to-year fluctuations, we can also use a moving window average to smooth the results."),
   inputPanel(
     sliderInput("n_boot", "Bootstrap iterations", min = 1, max = 100, value = 1, step = 10),
     sliderInput("window_size", "Rolling window size", min = 1, max = 20, value = 10),
