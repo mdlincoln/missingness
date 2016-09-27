@@ -10,6 +10,8 @@ shinyServer(function(input, output, session) {
 
   # Prerequisites ----
 
+  output$window_number <- renderText(paste0("The genre heterogeneity of Knoedler's offerings over time, smoothed with a ", input$window_size, "-year lagged window."))
+
   na_indices <- reactive({
     sample(x = c(TRUE, FALSE), size = nrow(kg), replace = TRUE,
            prob = c(input$percent_missing, 1 - input$percent_missing))
@@ -107,6 +109,10 @@ shinyServer(function(input, output, session) {
 
   boot_df <- reactive({
 
+    # Depend on calc so that the imputation is redone every time the action
+    # button is pressed.
+    input$calc
+
     pb <- Progress$new()
     on.exit(pb$close())
 
@@ -150,11 +156,10 @@ shinyServer(function(input, output, session) {
   output$div_plot <- renderPlot({
     # Isolate this calculation and plot behind an actionButton
     if (input$calc == 0) {
-      stop("Set your inputs, then click \"Calculate!\" to run the simulation and plot the results")
+      stop("Set your inputs, then click \"Simulate!\" to run the simulation and plot the results")
     }
 
     isolate({
-      input$calc
       p <- ggplot(boot_df(), aes(x = window_point, y = div))
       if (input$n_boot > 1)
         p <- p + geom_line(aes(group = boot_iteration), alpha = 7 / input$n_boot)
