@@ -22,8 +22,8 @@ section_example <- div(
 section_simulated <- div(
   p("Finally, to calculate the new diversity values, we must specify how many simulation runs to perform"),
   inputPanel(
-    sliderInput("n_boot", "Bootstrap iterations", min = 10, max = 100, value = 10),
-    sliderInput("window_size", "Rolling window size", min = 1, max = 20, value = 1),
+    sliderInput("n_boot", "Bootstrap iterations", min = 1, max = 100, value = 1, step = 10),
+    sliderInput("window_size", "Rolling window size", min = 1, max = 20, value = 10),
     actionButton("calc", "Simulate!")),
   p("A bootstrapped estimation of genre diversity over time"),
   plotOutput("div_plot"))
