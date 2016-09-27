@@ -136,13 +136,15 @@ shinyServer(function(input, output, session) {
   output$static_plot <- renderPlot({
     ggplot(kna(), aes(x = sale_date_year, fill = genre)) +
       geom_histogram(binwidth = 3) +
-      scale_fill_brewer(type = "qual", na.value = "gray50")
+      scale_fill_brewer(type = "qual", na.value = "gray50") +
+      theme(legend.position = "top")
   })
 
   output$sim_plot <- renderPlot({
     ggplot(impute_genre(kna(), 1), aes(x = sale_date_year, fill = imputed_genre)) +
       geom_histogram(binwidth = 3) +
-      scale_fill_brewer(type = "qual", na.value = "gray50")
+      scale_fill_brewer(type = "qual", na.value = "gray50") +
+      theme(legend.position = "top")
   })
 
   output$div_plot <- renderPlot({
