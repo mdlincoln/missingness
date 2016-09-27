@@ -4,7 +4,6 @@ library(ggplot2)
 library(gganimate)
 library(dplyr)
 library(vegan)
-library(dateSampler)
 
 shinyServer(function(input, output, session) {
 

@@ -2,6 +2,13 @@ load("knoedler.rda")
 library(purrr)
 library(dplyr)
 
+row_rep <- function(df, n, .id = "replicate") {
+  m <- nrow(df)
+  ndf <- df[rep(seq_len(m), each = n),]
+  ndf[[.id]] <- rep(seq_len(n), times = m)
+  return(ndf)
+}
+
 # Resample possible knoedler genres
 kg <- knoedler %>%
   filter(transaction == "Sold" & (is.na(sale_date_year) | sale_date_year < 1973)) %>%
