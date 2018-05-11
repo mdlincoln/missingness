@@ -160,10 +160,11 @@ shinyServer(function(input, output, session) {
 
     isolate({
       p <- ggplot(boot_df(), aes(x = window_point, y = div))
-      if (input$n_boot > 1)
-        p <- p + geom_line(aes(group = boot_iteration), alpha = 7 / input$n_boot)
-
-      p + stat_summary(fun.y = "median", color = "red", size = 1, geom = "line")
+      if (input$n_boot > 1) {
+        p + geom_line(aes(group = boot_iteration), alpha = 7 / input$n_boot)
+      } else {
+        p + stat_summary(fun.y = "median", color = "red", size = 1, geom = "line")
+      }
     })
   })
 
